@@ -1,5 +1,5 @@
 from flask import Flask, request, session
-from flask_socketio import SocketIO, join_room as join_room_socket
+from flask_socketio import SocketIO, join_room as join_room_, send, leave_room
 from uuid import uuid4 as v4
 
 app = Flask(__name__)
@@ -91,6 +91,61 @@ def join_room(name):
 
     print(rooms)
     return room, 200
+
+@socketio.on('message')
+def handle_message(data):
+    room_name = session.get('room_name')
+    player_name = session.get('player_name')
+   
+    # TODO: проверить существует ли комната
+    if room_name not in rooms:
+        leave_room(room_name)
+        return 
+    
+    content = {'name': player_name, 'message': data['data']}
+    send(content, to=room_name)
+    # rooms[room_name]['messages'].append(content)
+    print(content)
+    
+@socketio.on('connect')
+def handle_connect():
+    room_name = session.get('room_name')
+    player_name = session.get('player_name')
+
+    if not player_name or not room_name:
+        return 
+    
+    # TODO: проверить существует ли комната
+    if room_name not in rooms:
+        leave_room(room_name)
+        return 
+    
+    join_room_(room_name)
+    
+    send({'name': player_name, 'message': 'has entered the room'}, to=room_name)
+    
+@socketio.on('disconnect')
+def handle_disconnect():
+    room_name = session.get('room_name')
+    player_name = session.get('player_name')
+
+    # TODO: проверить существует ли комната
+    if room_name not in rooms:
+        return 
+
+    session.clear()
+    # TODO: получение комнаты из БД
+    room = rooms[room_name]
+    # TODO: в целом проверка что если ливает создатель
+    creator_name = ''
+    for players in room['players']:
+        if players['name'] == creator_name:
+            send({'name': player_name, 'message': 'Creator room has left the room'}, to=room)
+            # TODO: удаление комнаты
+            del rooms[room]
+            return
+    send({'name': player_name, 'message': 'has left the room'}, to=room)
+    
 
 if __name__ == '__main__':
     app.run(debug=True)
